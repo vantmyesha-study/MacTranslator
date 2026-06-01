@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct SettingsView: View {
+struct MenuPanelView: View {
     @ObservedObject private var vm: SettingsViewModel
 
     init(service: TranslationService) {
@@ -8,35 +8,25 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("MacTranslator")
-                .font(.title2.bold())
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text("DeepSeek API Key")
-                    .font(.headline)
+        VStack(alignment: .leading, spacing: 8) {
+            Text("API Key")
+                .font(.caption)
+                .foregroundColor(.secondary)
+            HStack(spacing: 6) {
                 SecureField("sk-...", text: $vm.apiKey)
                     .textFieldStyle(.roundedBorder)
+                    .frame(width: 180)
                     .onSubmit { vm.save() }
-            }
-
-            HStack {
-                Text("快捷键: ⌥T (Option + T)")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                Spacer()
                 Button("保存") { vm.save() }
-                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
             }
-
             if !vm.message.isEmpty {
                 Text(vm.message)
                     .font(.caption)
                     .foregroundColor(.green)
             }
         }
-        .padding(24)
-        .frame(width: 420)
+        .padding(10)
     }
 }
 

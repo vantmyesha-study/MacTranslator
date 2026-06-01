@@ -6,7 +6,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var hotkeyManager: HotkeyManager!
     private var translationService: TranslationService!
     private var floatingPanel: TranslationPanel!
-    private var settingsWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         translationService = TranslationService()
@@ -17,12 +16,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         setupStatusBar()
         hotkeyManager.register()
-
-        if translationService.apiKey.isEmpty {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                self.showSettings()
-            }
-        }
     }
 
     private func setupStatusBar() {
@@ -33,11 +26,35 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         let menu = NSMenu()
-        menu.addItem(NSMenuItem(title: "翻译选中文本 (⌥T)", action: #selector(triggerTranslation), keyEquivalent: ""))
+
+        let translateItem = NSMenuItem(title: "翻译选中文本 (⌥T)", action: #selector(triggerTranslation), keyEquivalent: "")
+        translateItem.target = self
+        menu.addItem(translateItem)
+
         menu.addItem(NSMenuItem.separator())
-        menu.addItem(NSMenuItem(title: "设置…", action: #selector(showSettings), keyEquivalent: ","))
+
+        // 设置 → 子菜单展开 API Key 输入
+        let settingsItem = NSMenuItem(title: "设置", action: nil, keyEquivalent: "")
+        let settingsSubmenu = NSMenu()
+
+        let settingsView = MenuPanelView(service: translationService)
+        let hostingView = NSHostingView(rootView: settingsView)
+        let fitting = hostingView.fittingSize
+        hostingView.frame = NSRect(x: 0, y: 0, width: fitting.width, height: fitting.height)
+
+        let viewItem = NSMenuItem()
+        viewItem.view = hostingView
+        settingsSubmenu.addItem(viewItem)
+
+        settingsItem.submenu = settingsSubmenu
+        menu.addItem(settingsItem)
+
         menu.addItem(NSMenuItem.separator())
-        menu.addItem(NSMenuItem(title: "退出", action: #selector(quit), keyEquivalent: "q"))
+
+        let quitItem = NSMenuItem(title: "退出", action: #selector(quit), keyEquivalent: "q")
+        quitItem.target = self
+        menu.addItem(quitItem)
+
         statusItem.menu = menu
     }
 
@@ -45,13 +62,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         handleTranslation()
     }
 
+    @objc private func quit() {
+        NSApp.terminate(nil)
+    }
+
     private func handleTranslation() {
-        NSLog("[MacTranslator] hotkey triggered")
         let savedContents = NSPasteboard.general.pasteboardItems?.compactMap {
             $0.data(forType: .string)
         }
 
-        let changeCount = NSPasteboard.general.changeCount
         NSPasteboard.general.clearContents()
 
         let src = CGEventSource(stateID: .hidSystemState)
@@ -66,7 +85,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return }
             let text = NSPasteboard.general.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
 
-            // restore clipboard
             NSPasteboard.general.clearContents()
             if let saved = savedContents {
                 for data in saved {
@@ -74,8 +92,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
 
-            NSLog("[MacTranslator] clipboard text: %@", text)
-            guard !text.isEmpty else { NSLog("[MacTranslator] empty text, skipping"); return }
+            guard !text.isEmpty else { return }
 
             let mouseLocation = NSEvent.mouseLocation
             self.floatingPanel.show(at: mouseLocation, sourceText: text, status: .loading)
@@ -91,31 +108,5 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         }
-    }
-
-    @objc private func showSettings() {
-        if let window = settingsWindow {
-            window.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
-            return
-        }
-
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 420, height: 200),
-            styleMask: [.titled, .closable],
-            backing: .buffered,
-            defer: false
-        )
-        window.title = "MacTranslator 设置"
-        window.center()
-        window.contentView = NSHostingView(rootView: SettingsView(service: translationService))
-        window.isReleasedWhenClosed = false
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
-        settingsWindow = window
-    }
-
-    @objc private func quit() {
-        NSApp.terminate(nil)
     }
 }
