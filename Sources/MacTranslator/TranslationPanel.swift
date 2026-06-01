@@ -47,7 +47,7 @@ class TranslationPanel {
 
         let p = NSPanel(
             contentRect: NSRect(x: x, y: y, width: kPanelWidth, height: panelHeight),
-            styleMask: [.nonactivatingPanel, .titled, .closable, .fullSizeContentView],
+            styleMask: [.nonactivatingPanel, .titled, .closable, .fullSizeContentView, .resizable],
             backing: .buffered,
             defer: false
         )
