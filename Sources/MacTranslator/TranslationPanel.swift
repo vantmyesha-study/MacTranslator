@@ -5,6 +5,9 @@ enum TranslationStatus {
     case loading, success, error
 }
 
+private let kPanelWidth: CGFloat = 420
+private let kChromeHeight: CGFloat = 80  // drag handle (28) + bottom bar (44) + divider (8)
+
 class TranslationPanel {
     private var panel: NSPanel?
     private let viewModel = TranslationViewModel()
@@ -17,33 +20,33 @@ class TranslationPanel {
 
         close()
 
-        let panelWidth: CGFloat = 420
         let screen = NSScreen.main ?? NSScreen.screens[0]
-        let maxPanelHeight = screen.visibleFrame.height * 0.6
+        let maxH = screen.visibleFrame.height * 0.7
 
-        let contentView = TranslationPanelView(viewModel: viewModel, maxPanelHeight: maxPanelHeight, onCopy: { [weak self] in
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(self?.viewModel.translatedText ?? "", forType: .string)
-        }, onClose: { [weak self] in
-            self?.close()
-        })
+        let panelHeight = measurePanelHeight(maxH: maxH)
 
-        let hosting = NSHostingView(rootView: contentView)
-        hosting.frame = NSRect(x: 0, y: 0, width: panelWidth, height: 1000)
-        hosting.layoutSubtreeIfNeeded()
-        let fittingSize = hosting.fittingSize
-        let panelHeight = min(max(fittingSize.height, 140), maxPanelHeight)
-        hosting.frame = NSRect(x: 0, y: 0, width: panelWidth, height: panelHeight)
-
-        var x = point.x - panelWidth / 2
+        var x = point.x - kPanelWidth / 2
         var y = point.y - panelHeight - 10
-
         let frame = screen.visibleFrame
-        x = max(frame.minX + 4, min(x, frame.maxX - panelWidth - 4))
+        x = max(frame.minX + 4, min(x, frame.maxX - kPanelWidth - 4))
         y = max(frame.minY + 4, min(y, frame.maxY - panelHeight - 4))
 
+        let maxScrollH = maxH - kChromeHeight
+        let contentView = TranslationPanelView(
+            viewModel: viewModel,
+            maxScrollHeight: maxScrollH,
+            onCopy: { [weak self] in
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(self?.viewModel.translatedText ?? "", forType: .string)
+            },
+            onClose: { [weak self] in self?.close() }
+        )
+
+        let hosting = NSHostingView(rootView: contentView)
+        hosting.frame = NSRect(x: 0, y: 0, width: kPanelWidth, height: panelHeight)
+
         let p = NSPanel(
-            contentRect: NSRect(x: x, y: y, width: panelWidth, height: panelHeight),
+            contentRect: NSRect(x: x, y: y, width: kPanelWidth, height: panelHeight),
             styleMask: [.nonactivatingPanel, .titled, .closable, .fullSizeContentView],
             backing: .buffered,
             defer: false
@@ -62,7 +65,8 @@ class TranslationPanel {
 
         monitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
             guard let self, let panel = self.panel else { return }
-            if !panel.frame.contains(event.locationInWindow) {
+            let loc = panel.convertPoint(fromScreen: event.locationInWindow)
+            if !panel.contentView!.bounds.contains(loc) {
                 self.close()
             }
         }
@@ -72,20 +76,18 @@ class TranslationPanel {
         viewModel.translatedText = translated
         viewModel.status = status
 
-        guard let panel, let hosting = panel.contentView as? NSHostingView<TranslationPanelView> else { return }
+        guard let panel else { return }
 
         DispatchQueue.main.async {
-            hosting.layoutSubtreeIfNeeded()
             let screen = NSScreen.main ?? NSScreen.screens[0]
-            let maxH = screen.visibleFrame.height * 0.6
-            let fittingSize = hosting.fittingSize
-            let newHeight = min(max(fittingSize.height, 140), maxH)
+            let maxH = screen.visibleFrame.height * 0.7
+            let newHeight = self.measurePanelHeight(maxH: maxH)
 
-            var frame = panel.frame
-            let delta = newHeight - frame.height
-            frame.origin.y -= delta
-            frame.size.height = newHeight
-            panel.setFrame(frame, display: true, animate: true)
+            var f = panel.frame
+            let delta = newHeight - f.height
+            f.origin.y -= delta
+            f.size.height = newHeight
+            panel.setFrame(f, display: true, animate: true)
         }
     }
 
@@ -93,6 +95,16 @@ class TranslationPanel {
         if let m = monitor { NSEvent.removeMonitor(m); monitor = nil }
         panel?.close()
         panel = nil
+    }
+
+    // 用一个无滚动限制的临时 view 测量真实内容高度，再加 chrome 后 clamp
+    private func measurePanelHeight(maxH: CGFloat) -> CGFloat {
+        let measureView = TranslationContentView(viewModel: viewModel)
+        let hosting = NSHostingView(rootView: measureView)
+        hosting.frame = NSRect(x: 0, y: 0, width: kPanelWidth - 32, height: 10000)
+        hosting.layoutSubtreeIfNeeded()
+        let contentH = hosting.fittingSize.height
+        return min(max(contentH + kChromeHeight, 120), maxH)
     }
 }
 
@@ -102,52 +114,71 @@ class TranslationViewModel: ObservableObject {
     @Published var status: TranslationStatus = .loading
 }
 
-struct TranslationPanelView: View {
+// 仅用于高度测量，不带 ScrollView 限制
+struct TranslationContentView: View {
     @ObservedObject var viewModel: TranslationViewModel
-    let maxPanelHeight: CGFloat
-    let onCopy: () -> Void
-    let onClose: () -> Void
-
-    private var maxSectionHeight: CGFloat { maxPanelHeight * 0.4 }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("原文")
-                .font(.caption)
-                .foregroundColor(.secondary)
-
+            Text("原文").font(.caption).foregroundColor(.secondary)
             Text(viewModel.sourceText)
                 .font(.system(size: 13))
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .lineLimit(nil)
+            Divider()
+            Text("译文").font(.caption).foregroundColor(.secondary)
+            translationBody
+                .frame(maxWidth: .infinity, minHeight: 30, alignment: .leading)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+    }
+
+    @ViewBuilder
+    private var translationBody: some View {
+        switch viewModel.status {
+        case .loading:
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.small)
+                Text("翻译中…").foregroundColor(.secondary)
+            }
+        case .success:
+            Text(viewModel.translatedText)
+                .font(.system(size: 14, weight: .medium))
+                .frame(maxWidth: .infinity, alignment: .leading)
+        case .error:
+            Text(viewModel.translatedText)
+                .font(.system(size: 13)).foregroundColor(.red)
+        }
+    }
+}
+
+struct TranslationPanelView: View {
+    @ObservedObject var viewModel: TranslationViewModel
+    let maxScrollHeight: CGFloat
+    let onCopy: () -> Void
+    let onClose: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // 拖动条（isMovableByWindowBackground 在这里生效）
+            HStack {
+                Capsule()
+                    .fill(Color.secondary.opacity(0.35))
+                    .frame(width: 36, height: 4)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 28)
+            .contentShape(Rectangle())
+
+            // 可滚动内容区
+            ScrollView(.vertical, showsIndicators: true) {
+                TranslationContentView(viewModel: viewModel)
+            }
+            .frame(maxHeight: maxScrollHeight)
 
             Divider()
 
-            Text("译文")
-                .font(.caption)
-                .foregroundColor(.secondary)
-
-            Group {
-                switch viewModel.status {
-                case .loading:
-                    HStack(spacing: 6) {
-                        ProgressView().controlSize(.small)
-                        Text("翻译中…").foregroundColor(.secondary)
-                    }
-                case .success:
-                    Text(viewModel.translatedText)
-                        .font(.system(size: 14, weight: .medium))
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .lineLimit(nil)
-                case .error:
-                    Text(viewModel.translatedText)
-                        .font(.system(size: 13))
-                        .foregroundColor(.red)
-                }
-            }
-            .frame(maxWidth: .infinity, minHeight: 30, alignment: .leading)
-
+            // 底部按钮栏
             HStack {
                 Spacer()
                 if viewModel.status == .success {
@@ -160,9 +191,10 @@ struct TranslationPanelView: View {
                 Button("关闭", action: onClose)
                     .controlSize(.small)
             }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
         }
-        .padding(16)
-        .frame(width: 420)
+        .frame(width: kPanelWidth)
         .background(.ultraThinMaterial)
     }
 }
