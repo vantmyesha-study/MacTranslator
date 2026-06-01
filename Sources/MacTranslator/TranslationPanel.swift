@@ -63,9 +63,9 @@ class TranslationPanel {
 
         panel = p
 
-        monitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+        monitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
             guard let self, let panel = self.panel else { return }
-            if !NSMouseInRect(event.locationInWindow, panel.frame, false) {
+            if !NSMouseInRect(NSEvent.mouseLocation, panel.frame, false) {
                 self.close()
             }
         }
@@ -117,36 +117,46 @@ class TranslationViewModel: ObservableObject {
 struct TranslationContentView: View {
     @ObservedObject var viewModel: TranslationViewModel
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("原文").font(.caption).foregroundColor(.secondary)
-            Text(viewModel.sourceText)
-                .font(.system(size: 13))
-                .frame(maxWidth: .infinity, alignment: .leading)
-            Divider()
-            Text("译文").font(.caption).foregroundColor(.secondary)
-            translationBody
-                .frame(maxWidth: .infinity, minHeight: 30, alignment: .leading)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+    private var sourceLines: [String] {
+        viewModel.sourceText.components(separatedBy: "\n").filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
     }
 
-    @ViewBuilder
-    private var translationBody: some View {
-        switch viewModel.status {
-        case .loading:
-            HStack(spacing: 6) {
-                ProgressView().controlSize(.small)
-                Text("翻译中…").foregroundColor(.secondary)
+    private var translatedLines: [String] {
+        viewModel.translatedText.components(separatedBy: "\n").filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if viewModel.status == .error {
+                Text(viewModel.translatedText)
+                    .font(.system(size: 13)).foregroundColor(.red)
+                    .padding(.horizontal, 16).padding(.vertical, 10)
+            } else {
+                ForEach(Array(sourceLines.enumerated()), id: \.offset) { i, line in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(line)
+                            .font(.system(size: 13))
+                            .foregroundColor(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        if i < translatedLines.count {
+                            Text(translatedLines[i])
+                                .font(.system(size: 14, weight: .medium))
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        } else {
+                            HStack(spacing: 6) {
+                                ProgressView().controlSize(.mini)
+                                Text("翻译中…").foregroundColor(.secondary).font(.system(size: 13))
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+
+                    if i < sourceLines.count - 1 {
+                        Divider().padding(.horizontal, 16)
+                    }
+                }
             }
-        case .success:
-            Text(viewModel.translatedText)
-                .font(.system(size: 14, weight: .medium))
-                .frame(maxWidth: .infinity, alignment: .leading)
-        case .error:
-            Text(viewModel.translatedText)
-                .font(.system(size: 13)).foregroundColor(.red)
         }
     }
 }
