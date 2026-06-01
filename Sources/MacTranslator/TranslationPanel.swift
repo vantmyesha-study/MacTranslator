@@ -6,7 +6,7 @@ enum TranslationStatus {
 }
 
 private let kPanelWidth: CGFloat = 420
-private let kChromeHeight: CGFloat = 80  // drag handle (28) + bottom bar (44) + divider (8)
+private let kChromeHeight: CGFloat = 52  // bottom bar (44) + divider (8)
 
 class TranslationPanel {
     private var panel: NSPanel?
@@ -160,16 +160,6 @@ struct TranslationPanelView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // 拖动条（isMovableByWindowBackground 在这里生效）
-            HStack {
-                Capsule()
-                    .fill(Color.secondary.opacity(0.35))
-                    .frame(width: 36, height: 4)
-            }
-            .frame(maxWidth: .infinity)
-            .frame(height: 28)
-            .contentShape(Rectangle())
-
             // 可滚动内容区
             ScrollView(.vertical, showsIndicators: true) {
                 TranslationContentView(viewModel: viewModel)
