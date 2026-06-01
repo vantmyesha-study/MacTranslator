@@ -65,8 +65,7 @@ class TranslationPanel {
 
         monitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
             guard let self, let panel = self.panel else { return }
-            let loc = panel.convertPoint(fromScreen: event.locationInWindow)
-            if !panel.contentView!.bounds.contains(loc) {
+            if !NSMouseInRect(event.locationInWindow, panel.frame, false) {
                 self.close()
             }
         }
